@@ -12,10 +12,12 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ProgressBar;
 
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ExoPlayerFactory;
+import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.SimpleExoPlayer;
@@ -24,6 +26,8 @@ import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.extractor.ExtractorsFactory;
 import com.google.android.exoplayer2.source.ExtractorMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.MergingMediaSource;
+import com.google.android.exoplayer2.source.SingleSampleMediaSource;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.text.Cue;
 import com.google.android.exoplayer2.text.TextRenderer;
@@ -37,8 +41,12 @@ import com.google.android.exoplayer2.upstream.BandwidthMeter;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.Util;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Locale;
@@ -57,7 +65,9 @@ public class PlayActivity extends Activity {
     //    Uri playerUri = Uri.parse("https://storage.googleapis.com/android-tv/Sample%20videos/Demo%20Slam/Google%20Demo%20Slam_%20Hangin'%20with%20the%20Google%20Search%20Bar.mp4");
     Uri playerUri = Uri.parse("https://sdvideos.s3.cn-north-1.amazonaws.com.cn/allnew2/%E6%9D%8E%E5%A2%9E%E7%83%88%2B%E6%85%A2%E6%80%A7%E8%85%B9%E6%B3%BB%E4%B8%8E%E2%80%9C%E7%BB%93%E8%82%A0%E7%82%8E.mp4");
 
+    private Uri subtitleUri;
     private ProgressBar mProgressBar;
+    private String language;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -66,10 +76,15 @@ public class PlayActivity extends Activity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.layout_play);
 
+        Locale locale = getResources().getConfiguration().locale;
+        // 获取当前系统语言
+        language = locale.getLanguage();
+
         mContext = this;
         mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
         initPlayer();
-        playVideo();
+
+        initData();
     }
 
     @Override
@@ -107,11 +122,27 @@ public class PlayActivity extends Activity {
         ExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 
 
+        /*****************************************普通加载视频地址播放*********************************************************/
+//        // MediaSource代表要播放的媒体。
+//        MediaSource videoSource = new ExtractorMediaSource(playerUri, dataSourceFactory, extractorsFactory,
+//                null, null);
+//        //Prepare the player with the source.
+//        mSimpleExoPlayer.prepare(videoSource);
+//        //添加监听的listener
+////        mSimpleExoPlayer.setVideoListener(mVideoListener);
+//        mSimpleExoPlayer.addListener(eventListener);
+////        mSimpleExoPlayer.setTextOutput(mOutput);
+//        mSimpleExoPlayer.setPlayWhenReady(true);
+
+        /*****************************************外挂字幕文件播放*********************************************************/
         // MediaSource代表要播放的媒体。
-        MediaSource videoSource = new ExtractorMediaSource(playerUri, dataSourceFactory, extractorsFactory,
-                null, null);
+        MediaSource videoSource = new ExtractorMediaSource(playerUri, dataSourceFactory, extractorsFactory, null, null);
+        Format subtitleFormat = Format.createTextSampleFormat(null, MimeTypes.APPLICATION_TTML, null, Format.NO_VALUE,
+                Format.NO_VALUE, language, null);
+        MediaSource subtitleSource = new SingleSampleMediaSource(subtitleUri, dataSourceFactory, subtitleFormat, C.TIME_UNSET);
+        MergingMediaSource mergingMediaSource = new MergingMediaSource(videoSource, subtitleSource);
         //Prepare the player with the source.
-        mSimpleExoPlayer.prepare(videoSource);
+        mSimpleExoPlayer.prepare(mergingMediaSource);
         //添加监听的listener
 //        mSimpleExoPlayer.setVideoListener(mVideoListener);
         mSimpleExoPlayer.addListener(eventListener);
@@ -240,5 +271,32 @@ public class PlayActivity extends Activity {
         Log.i(TAG, "MainActivity.onStop.");
         super.onStop();
         mSimpleExoPlayer.release();
+    }
+
+    private void initData() {
+
+        try {
+            InputStream is = getAssets().open("ranshao.ass");
+            String text = readTextFromSDcard(is);
+            subtitleUri = Uri.parse(text);
+            Log.e("FFFF","subtitleUri:"+subtitleUri);
+            playVideo();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+
+
+    private String readTextFromSDcard(InputStream is) throws Exception {
+        InputStreamReader reader = new InputStreamReader(is);
+        BufferedReader bufferedReader = new BufferedReader(reader);
+        StringBuffer buffer = new StringBuffer("");
+        String str;
+        while ((str = bufferedReader.readLine()) != null) {
+            buffer.append(str);
+            buffer.append("\n");
+        }
+        return buffer.toString();
     }
 }
